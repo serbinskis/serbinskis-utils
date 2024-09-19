@@ -1,0 +1,26 @@
+{
+  "name": "serbinskis-utils",
+  "version": "1.0.79",
+  "description": "",
+  "main": "index.js",
+  "author": "Serbinskis",
+  "license": "ISC",
+  "dependencies": {
+    "@gerhobbelt/gitignore-parser": "^0.2.0-9",
+    "adm-zip": "^0.5.9",
+    "archiver": "^6.0.1",
+    "cli-progress": "^3.11.2",
+    "fs-extra": "^11.1.0",
+    "got": "^11.8.1",
+    "is-online": "^9.0.0",
+    "pretty-bytes": "^5.6.0",
+    "request": "^2.88.2",
+    "set-value": "^4.1.0",
+    "sha256-file": "^1.0.0",
+    "socket.io-client": "^4.5.4",
+    "sqlite3": "^5.1.6",
+    "utimes": "^5.2.1",
+    "uuid": "^9.0.0",
+    "zip-local": "^0.3.5"
+  }
+}
