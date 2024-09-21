@@ -1,5 +1,4 @@
-
-# Database.js
+# database.js
 
 A Node.js utility class for managing SQLite databases, supporting dynamic schema updates, table reordering, field management, and efficient data manipulation.
 
@@ -192,5 +191,3 @@ Executes a raw SQL query using `db.get`.
 
 #### `allQuery(...args)`
 Executes a raw SQL query using `db.all`.
-
----
