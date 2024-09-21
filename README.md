@@ -1,6 +1,6 @@
 # serbinskis-utils
 
-Welcome to the Serbinskis Utils repository! This collection of utilities is designed to streamline various tasks in your projects. Below is a list of the available tools and their documentation.
+Welcome to the serbinskis-utils repository! This collection of utilities is designed to streamline various tasks in your projects. Below is a list of the available tools and their documentation.
 
 ## Table of Contents
 
