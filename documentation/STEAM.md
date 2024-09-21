@@ -21,17 +21,17 @@ Retrieves details about a workshop collection based on given IDs.
 
 - `ids` (array|string): An array of collection IDs or a single ID.
 
-### `getItemDetails(ids)`
+#### `getItemDetails(ids)`
 Fetches details for specific workshop items.
 
 - `ids` (array|string): An array of item IDs or a single ID.
 
-### `downloadSteamCmd(path)`
+#### `downloadSteamCmd(path)`
 Downloads SteamCMD to the specified path if it does not already exist.
 
 - `path` (string): The directory where SteamCMD will be downloaded.
 
-### `downloadCollections(ids, path, opts, callback)`
+#### `downloadCollections(ids, path, opts, callback)`
 Downloads all items in a specified collection.
 
 - `ids` (array|string): Collection ID(s).
@@ -39,7 +39,7 @@ Downloads all items in a specified collection.
 - `opts` (object): Options for downloading.
 - `callback` (function): Callback function for tracking progress.
 
-### `downloadItems(ids, path, opts, callback)`
+#### `downloadItems(ids, path, opts, callback)`
 Downloads individual items from the Workshop.
 
 - `ids` (array|string): Item ID(s).
