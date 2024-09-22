@@ -12,6 +12,10 @@ Welcome to the serbinskis-utils repository! This collection of utilities is desi
 | Syncer      | Synchronization utility for various tasks.      | [SYNCER.md](documentation/SYNCER.md) |
 | Timer       | Timer utilities for scheduling and timing tasks.| [TIMER.md](documentation/TIMER.md) |
 
+## Installation
+
+To install this library use the command: `npm i serbinskis-utils`.
+
 ## Getting Started
 
 To get started with any of these utilities, check the documentation linked above for detailed usage instructions, examples, and API references.
