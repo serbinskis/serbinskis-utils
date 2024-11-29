@@ -55,6 +55,8 @@ var db = new Database({
     delete_unused: true,
     reorder: true,
     tables: config.database_tables,
+    backup_interval: 60*60*1000,
+    backup_enabled: true,
 });
 
 (async () => {
@@ -66,5 +68,8 @@ var db = new Database({
     }
 
     var result = await db.moveRows('files', 'files_backup', 'id', config.ID, '=', 1);
+    console.log(result);
+
+    var result = await db.backup();
     console.log(result);
 })();

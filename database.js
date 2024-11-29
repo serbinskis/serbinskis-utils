@@ -31,10 +31,16 @@ function Database(opts) {
     this.reorder = false || opts.reorder;
     this.tables = opts.tables || {};
     this.error_callback = opts.error_callback || (() => {});
+    this.backup_filename = opts.backup_filename || path.format({ ...path.parse(this.filename), base: '', ext: '.db.bak' });
+    this.backup_interval = opts.backup_interval || 1000*60*60;
+    this.backup_enabled = false || opts.backup_enabled;
 }
 
 
 Database.prototype.close = async function () {
+    clearInterval(this.backup_timer);
+    await this.backup(this.backup_filename);
+
     return new Promise(resolve => {
         this.db.close((err) => {
             if (err) { this.error_callback('close', err); return resolve({ code: 500 }); }
@@ -49,7 +55,7 @@ Database.prototype.open = async function () {
         if (!fs.existsSync(this.directory)) { fs.mkdirSync(this.directory, { recursive: true }); }
 
         this.db = new sqlite3.Database(this.filename, (sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE), async (err) => {
-            if (err) { this.error_callback('close', err); return resolve({ code: 500 }); }
+            if (err) { this.error_callback('open', err); return resolve({ code: 500 }); }
 
             for (const table in this.tables) {
                 await this.createTable(table, this.tables[table]);
@@ -57,9 +63,18 @@ Database.prototype.open = async function () {
             }
 
             this.ready = true;
+            if (this.backup_enabled) { this.backup_timer = setInterval(() => this.backup(this.backup_filename), this.backup_interval); }
             resolve({ code: 200 });
         });
     });
+}
+
+Database.prototype.backup = async function (filename) {
+    if (!filename) { filename = this.backup_filename; }
+    if (!fs.existsSync(path.dirname(filename))) { fs.mkdirSync(path.dirname(filename), { recursive: true }); }
+    if (fs.existsSync(filename)) { try { fs.unlinkSync(filename); } catch (error) { return { code: -4082 } } }
+    var error = await new Promise(resolve => fs.copyFile(this.filename, filename, fs.constants.COPYFILE_EXCL, resolve));
+    return { code: error ? 500 : 200 };
 }
 
 
