@@ -92,7 +92,7 @@ Database.prototype.vacuum = async function () {
     this.busy = true;
 
     var result = await new Promise(resolve => {
-        this.db.runQuery("VACUUM", (err) => {
+        this.db.run("VACUUM", (err) => {
             if (err) { this.error_callback('vacuum', err); return resolve({ code: 500, status: false }); }
             resolve({ code: err ? 500 : 200, status: Boolean(!err) });
         });
