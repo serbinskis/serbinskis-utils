@@ -88,9 +88,9 @@ exports.getTimeString = () => {
 }
 
 exports.formatLogText = (text) => {
-    text = text.replace(/^\[\d+-\d+-\d+ \d+:\d+:\d+\] /gm, ''); //Remove time formatting from other logs
-    var hasNewLine = /\r?\n$/.test(text); //Check if texts ends with new line, before formatting it
-    return text.trim().split(/\r\n|\r|\n/).map(line => `[${exports.getTimeString()}] ${line}`).join('\n') + (hasNewLine ? '\n' : ''); //Add time stamps
+    text = text.replace(/^\[\d+-\d+-\d+ \d+:\d+:\d+\] /gm, '').replace(/(\r\n|\r|\n)$/, ''); //Remove time formatting from other logs, and final new line
+    var hasNewLine = /(\r\n|\r|\n)$/.test(text); //Check if texts ends with new line, before formatting it
+    return text.split(/\r\n|\r|\n/).map(line => `[${exports.getTimeString()}] ${line}`).join('\n') + (hasNewLine ? '\n' : ''); //Add time stamps
 }
 
 exports.formatBytes = (bytes, after) => {
