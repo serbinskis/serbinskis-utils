@@ -31,31 +31,37 @@ function Database(opts) {
     this.reorder = false || opts.reorder;
     this.tables = opts.tables || {};
     this.error_callback = opts.error_callback || (() => {});
+    this.busy = false;
+
     this.backup_filename = opts.backup_filename || path.format({ ...path.parse(this.filename), base: '', ext: '.db.bak' });
+    this.backup_timer = -1;
     this.backup_interval = opts.backup_interval || 1000*60*60;
     this.backup_enabled = false || opts.backup_enabled;
-}
 
+    this.vacuum_timer = -1;
+    this.vacuum_interval = opts.vacuum_interval || 1000*60*60*24*7;
+    this.vacuum_enabled = false || opts.backup_enabled;
+}
 
 Database.prototype.close = async function () {
     clearInterval(this.backup_timer);
+    clearInterval(this.vacuum_interval);
     await this.backup(this.backup_filename);
 
     return new Promise(resolve => {
         this.db.close((err) => {
-            if (err) { this.error_callback('close', err); return resolve({ code: 500 }); }
-            resolve({ code: 200 });
+            if (err) { this.error_callback('close', err); return resolve({ code: 500, status: false }); }
+            resolve({ code: 200, status: true });
         });
     });
 }
-
 
 Database.prototype.open = async function () {
     return new Promise(async (resolve) => {
         if (!fs.existsSync(this.directory)) { fs.mkdirSync(this.directory, { recursive: true }); }
 
         this.db = new sqlite3.Database(this.filename, (sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE), async (err) => {
-            if (err) { this.error_callback('open', err); return resolve({ code: 500 }); }
+            if (err) { this.error_callback('open', err); return resolve({ code: 500, status: false }); }
 
             for (const table in this.tables) {
                 await this.createTable(table, this.tables[table]);
@@ -64,19 +70,37 @@ Database.prototype.open = async function () {
 
             this.ready = true;
             if (this.backup_enabled) { this.backup_timer = setInterval(() => this.backup(this.backup_filename), this.backup_interval); }
-            resolve({ code: 200 });
+            if (this.vacuum_enabled) { this.vacuum_timer = setInterval(() => this.vacuum(), this.vacuum_interval); }
+            resolve({ code: 200, status: true });
         });
     });
 }
 
 Database.prototype.backup = async function (filename) {
+    if (this.busy) { return { code: 429, status: false } }
     if (!filename) { filename = this.backup_filename; }
     if (!fs.existsSync(path.dirname(filename))) { fs.mkdirSync(path.dirname(filename), { recursive: true }); }
-    if (fs.existsSync(filename)) { try { fs.unlinkSync(filename); } catch (error) { return { code: -4082 } } }
+    if (fs.existsSync(filename)) { try { fs.unlinkSync(filename); } catch (error) { return { code: -4082, status: false } } }
+    this.busy = true;
     var error = await new Promise(resolve => fs.copyFile(this.filename, filename, fs.constants.COPYFILE_EXCL, resolve));
-    return { code: error ? 500 : 200 };
+    this.busy = false;
+    return { code: error ? 500 : 200, status: Boolean(!error) };
 }
 
+Database.prototype.vacuum = async function () {
+    if (this.busy) { return { code: 429, status: false } }
+    this.busy = true;
+
+    var result = await new Promise(resolve => {
+        this.db.runQuery("VACUUM", (err) => {
+            if (err) { this.error_callback('vacuum', err); return resolve({ code: 500, status: false }); }
+            resolve({ code: err ? 500 : 200, status: Boolean(!err) });
+        });
+    });
+
+    this.busy = false;
+    return result;
+}
 
 Database.prototype.createTable = async function (table, fields) {
     return new Promise(async (resolve) => {
@@ -86,22 +110,21 @@ Database.prototype.createTable = async function (table, fields) {
 
         const fdefinitions = fields.map(field => `"${field.name}" ${field.type}`).join(', ');
         this.db.run(`CREATE TABLE "${table}" (${fdefinitions})`, (err) => {
-            if (err) { this.error_callback('createTable', err); return resolve({ code: 500 }); }
-            resolve({ code: 200 });
+            if (err) { this.error_callback('createTable', err); return resolve({ code: 500, status: false }); }
+            resolve({ code: 200, status: true });
         });
     });
 }
 
-
 Database.prototype.deleteTable = async function (table) {
     return new Promise(async (resolve) => {
         var result = await this.tableExists(table);
-        if (result.code != 200) { return resolve({ code: 500 }); }
-        if (!result.status) { return resolve({ code: 404 }); }
+        if (result.code != 200) { return resolve({ code: 500, status: false }); }
+        if (!result.status) { return resolve({ code: 404, status: false }); }
 
         this.db.get(`DROP TABLE "${table}"`, async (err) => {
-            if (err) { this.error_callback('deleteTable', err); return resolve({ code: 500 }); }
-            resolve({ code: 200 });
+            if (err) { this.error_callback('deleteTable', err); return resolve({ code: 500, status: false }); }
+            resolve({ code: 200, status: true });
         });
     });
 }
@@ -131,7 +154,6 @@ Database.prototype.renameTable = async function (old_table, new_table) {
     });
 }
 
-
 Database.prototype.tableExists = async function (table) {
     return new Promise(resolve => {
         this.db.get(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, [table], async (err, db_table) => {
@@ -141,12 +163,11 @@ Database.prototype.tableExists = async function (table) {
     });
 }
 
-
 Database.prototype.addField = async function (table, field, type, default_value) {
     var result = await new Promise(resolve => {
         this.db.run(`ALTER TABLE "${table}" ADD COLUMN "${field}" ${type}`, (err) => {
-            if (err) { this.error_callback('addField', err); return resolve({ code: 500 }); }
-            resolve({ code: 200 });
+            if (err) { this.error_callback('addField', err); return resolve({ code: 500, status: false }); }
+            resolve({ code: 200, status: true });
         });
     });
 
@@ -154,12 +175,11 @@ Database.prototype.addField = async function (table, field, type, default_value)
 
     return await new Promise(resolve => {
         this.db.run(`UPDATE "${table}" SET "${field}"=?`, default_value, (err) => {
-            if (err) { this.error_callback('addField', err); return resolve({ code: 500 }); }
-            resolve({ code: 200 });
+            if (err) { this.error_callback('addField', err); return resolve({ code: 500, status: false }); }
+            resolve({ code: 200, status: true });
         });
     });
 };
-
 
 Database.prototype.addFields = function (table, fields, delete_unused) {
     return new Promise(async (resolve) => {
@@ -170,7 +190,7 @@ Database.prototype.addFields = function (table, fields, delete_unused) {
         }
 
         this.db.all(`PRAGMA table_info("${table}")`, async (err, table_fields) => {
-            if (err) { this.error_callback('addFields', err); return resolve({ code: 500 }); }
+            if (err) { this.error_callback('addFields', err); return resolve({ code: 500, status: false }); }
 
             const add_fields = fields.map(field => field.name);
             const db_fields = table_fields.map(field => field.name);
@@ -192,21 +212,19 @@ Database.prototype.addFields = function (table, fields, delete_unused) {
                 }
             }
 
-            resolve({ code: 200 });
+            resolve({ code: 200, status: true });
         });
     });
 };
-
 
 Database.prototype.deleteField = async function (table, field) {
     return new Promise(resolve => {
         this.db.run(`ALTER TABLE "${table}" DROP COLUMN "${field}"`, (err) => {
-            if (err) { this.error_callback('deleteField', err); return resolve({ code: 500 }); }
-            resolve({ code: 200 });
+            if (err) { this.error_callback('deleteField', err); return resolve({ code: 500, status: false }); }
+            resolve({ code: 200, status: true });
         });
     });
 };
-
 
 Database.prototype.renameField = async function (table, old_field, new_field) {
     var result1 = (await this.fieldExists(table, old_field));
@@ -222,7 +240,6 @@ Database.prototype.renameField = async function (table, old_field, new_field) {
         });
     });
 };
-
 
 Database.prototype.reorderFields = async function (table, fields) {    
     return new Promise(resolve => {
@@ -262,7 +279,6 @@ Database.prototype.reorderFields = async function (table, fields) {
     });
 };
 
-
 Database.prototype.fieldExists = async function (table, field) {
     return new Promise(resolve => {
         this.db.all(`PRAGMA table_info("${table}")`, async (err, table_fields) => {
@@ -271,7 +287,6 @@ Database.prototype.fieldExists = async function (table, field) {
         });
     });
 };
-
 
 Database.prototype.addValues = async function (table, ...args) {
     return new Promise(resolve => {
@@ -282,18 +297,25 @@ Database.prototype.addValues = async function (table, ...args) {
     });
 };
 
-
-Database.prototype.setValue = async function (table, field, value, search_field, search_value) {
-    var that = this;
-
+Database.prototype.getValue = async function (table, field, value, search_field, equality) {
     return new Promise(resolve => {
-        this.db.run(`UPDATE "${table}" SET "${field}"=? WHERE "${search_field}"=?`, [value, search_value], function (err) {
-            if (err) { that.error_callback('setValue', err); return resolve({ code: 500, status: false, changes: 0 }); }
-            resolve({ code: 200, status: (this.changes > 0), changes: this.changes });
+        this.db.get(`SELECT "${field}" FROM "${table}" WHERE "${field}"${equality ? equality : '='}? LIMIT 1`, [value], (err, row) => {
+            if (err) { this.error_callback('getValue', err); return resolve({ code: 500, value: null }); }
+            resolve({ code: 200, value: row ? row[search_field] : null });
         });
     });
 };
 
+Database.prototype.setValue = async function (table, field, value, search_field, search_value) {
+    var self = this;
+
+    return new Promise(resolve => {
+        this.db.run(`UPDATE "${table}" SET "${field}"=? WHERE "${search_field}"=?`, [value, search_value], function (err) {
+            if (err) { self.error_callback('setValue', err); return resolve({ code: 500, status: false, changes: 0 }); }
+            resolve({ code: 200, status: (this.changes > 0), changes: this.changes });
+        });
+    });
+};
 
 Database.prototype.valueExists = async function (table, field, value, equality) {
     return new Promise(resolve => {
@@ -304,12 +326,10 @@ Database.prototype.valueExists = async function (table, field, value, equality) 
     });
 };
 
-
 Database.prototype.getRow = async function (table, field, value, equality) {
     var result = await this.getRows(table, field, value, equality, 1);
     return { code: result.code, row: (result.rows?.[0]) || null };
 };
-
 
 Database.prototype.getRows = async function (table, field, value, equality, limit) {
     return new Promise(resolve => {
@@ -320,30 +340,27 @@ Database.prototype.getRows = async function (table, field, value, equality, limi
     });
 };
 
-
 Database.prototype.deleteRow = async function (table, field, value, equality) {
     return await this.deleteRows(table, field, value, equality, 1);
 };
 
-
 Database.prototype.deleteRows = async function (table, field, value, equality, limit) {
-    var that = this;
+    var self = this;
 
     return new Promise(resolve => {
-        this.db.run(`DELETE FROM "${table}" WHERE "${field}" = (SELECT "${field}" FROM "${table}" WHERE "${field}"${equality ? equality : '='}?${limit >= 0 ? ` LIMIT ${limit}` : ''})`, [value], function(err) {
-            if (err) { that.error_callback('deleteRows', err); return resolve({ code: 500, status: false, changes: 0 }); }
+        this.db.run(`DELETE FROM "${table}" WHERE "${field}" = (SELECT "${field}" FROM "${table}" WHERE "${field}"${equality ? equality : '='}?${limit >= 0 ? ` LIMIT ${limit}` : ''})`, [value], function (err) {
+            if (err) { self.error_callback('deleteRows', err); return resolve({ code: 500, status: false, changes: 0 }); }
             resolve({ code: 200, status: (this.changes > 0), changes: this.changes });
         });
     });
 };
 
-
 Database.prototype.moveRows = async function (from_table, to_table, field, value, equality, limit) {
-    var that = this;
+    var self = this;
 
     var result = await new Promise(resolve => {
-        this.db.run(`INSERT INTO "${to_table}" SELECT * FROM "${from_table}" WHERE "${field}"${equality ? equality : '='}?${limit >= 0 ? ` LIMIT ${limit}` : ''}`, [value], function(err) {
-            if (err) { that.error_callback('moveRows', err); return resolve({ code: 500, status: false, changes: 0 }); }
+        this.db.run(`INSERT INTO "${to_table}" SELECT * FROM "${from_table}" WHERE "${field}"${equality ? equality : '='}?${limit >= 0 ? ` LIMIT ${limit}` : ''}`, [value], function (err) {
+            if (err) { self.error_callback('moveRows', err); return resolve({ code: 500, status: false, changes: 0 }); }
             resolve({ code: 200, status: (this.changes > 0), changes: this.changes });
         });
     });
@@ -352,20 +369,16 @@ Database.prototype.moveRows = async function (from_table, to_table, field, value
     return await this.deleteRows(from_table, field, value, equality, limit);
 };
 
-
 Database.prototype.runQuery = function (...args) {
     this.db.run(...args);
 };
-
 
 Database.prototype.getQuery = function (...args) {
     this.db.get(...args);
 };
 
-
 Database.prototype.allQuery = function (...args) {
     this.db.all(...args);
 };
-
 
 module.exports = Database;
