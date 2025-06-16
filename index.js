@@ -21,7 +21,7 @@ exports.IPV4Address = (vEthernet) => {
     var interfaces = require('os').networkInterfaces();
     interfaces = Object.entries(interfaces).filter(e => (vEthernet ? true : !e[0].includes('vEthernet'))).map(e => e[1]).flat(1);
     interfaces = interfaces.filter(e => ((e.family === 'IPv4') && (e.address !== '127.0.0.1') && !e.internal));
-    return interfaces.sort((a, b) => a.address.localeCompare(b.address))[0] || '0.0.0.0';
+    return interfaces.sort((a, b) => a.address.localeCompare(b.address))[0]?.address || '0.0.0.0';
 }
 
 exports.setProperties = (filename, name, value) => {
