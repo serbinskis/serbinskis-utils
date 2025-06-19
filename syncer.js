@@ -93,9 +93,21 @@ Syncer.prototype.compare = async function (file1, file2) {
     return (hash1 == hash2);
 }
 
-Syncer.prototype.handleDirectory = async function (path, location, date) {
-    var destination = path.replace(((location == 'source') ? this.source : this.destination), ((location == 'source') ? this.destination : this.source));
+Syncer.prototype.getDestination = function (path, location) {
+    return path.replace(((location == 'source') ? this.source : this.destination), ((location == 'source') ? this.destination : this.source));
+}
 
+Syncer.prototype.isSameDate = async function (path, location) {
+    var destination = this.getDestination(path, location);
+    if (!(await this.existsAsync(destination))) { return false; }
+
+    var stats_f1 = await fs.promises.stat(path);
+    var stats_f2 = await fs.promises.stat(destination);
+    return (stats_f2.mtime.getTime() - stats_f1.mtime.getTime()) == 0;
+}
+
+Syncer.prototype.handleDirectory = async function (path, location, date) {
+    var destination = this.getDestination(path, location);
     if (date && this.sync_date) { return this.handleDirectoryDate(path, destination, location); }
     if (await this.handleDirectoryDelete(path, destination, location)) { return; }
     if (await this.handleDirectoryCreate(path, destination, location)) { return; }
@@ -131,7 +143,7 @@ Syncer.prototype.handleDirectoryCreate = async function (path, destination, loca
 }
 
 Syncer.prototype.handleDirectoryDate = async function (path, destination, location) {
-    if (await !this.existsAsync(destination)) { return false; }
+    if (!(await this.existsAsync(destination))) { return false; }
 
     if ((this.copy_mode == location) || (this.copy_mode == 'both')) {
         var stats_f1 = await fs.promises.stat(path);
@@ -176,8 +188,8 @@ Syncer.prototype.handleIgnoredDirectory = async function (path, destination, loc
 Syncer.prototype.handleFile = async function (file, location) {
     //if ((this.copy_mode == 'source') && (location != 'source')) { return; }
     //if ((this.copy_mode == 'destination') && (location != 'destination')) { return; }
-    var destination = file.replace(((location == 'source') ? this.source : this.destination), ((location == 'source') ? this.destination : this.source));
 
+    var destination = this.getDestination(file, location);
     this.current_file = [file, destination, location, ((this.current_file || [])[3] || 0)+1];
     await this.callback('CURRENT_FILE', file, destination, location, this.current_file[3]);
     if (!(await this.existsAsync(file))) { await this.callback('FILE_ERROR', file, destination); return; }
@@ -242,7 +254,7 @@ Syncer.prototype.handleIgnoredFile = async function (file1, file2, location) {
 }
 
 Syncer.prototype.handleFileCopy = async function (file1, file2, location) {
-    if ((await this.existsAsync(file2))) { return false; }
+    if (await this.existsAsync(file2)) { return false; }
     //this.copyFileAsync() - only returns error if such happened
 
     if ((this.copy_mode == location) || (this.copy_mode == 'both')) {
@@ -297,7 +309,7 @@ Syncer.prototype.handleFileOverwrite = async function (file1, file2, location) {
 
 Syncer.prototype.handleIgnored = async function (file, filename, location) {
     if (!this.sync_delete) { return; }
-    var destination = filename.replace(((location == 'source') ? this.source : this.destination), ((location == 'source') ? this.destination : this.source));
+    var destination = this.getDestination(filename, location);
 
     if (file.isFile()) {
         this.current_file = [filename, destination, location, ((this.current_file || [])[3] || 0)+1];
@@ -319,6 +331,12 @@ Syncer.prototype.recurse = async function (path, location) {
     } catch (e) {
         return await this.callback('DIRECTORY_READ_ERROR', path, null, location);
     }
+
+    //If we are checking dates, then if two folders have same date, we should not check files inside then
+    //Because when file gets modified it modifies parent folder's date, but if folder inside of folder get modified
+    //Then it does not update it's parent folder date
+    //var skipFiles = this.sync_date & await this.isSameDate(path, location);
+    //NOT WORKING, BECAUSE DIRECTLY WRITING TO FILE DOES NOT UPDATE FOLDER'S DATE
 
     for (const file of files) {
         var filename = `${path}/${file.name}`;
